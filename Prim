@@ -1,42 +1,40 @@
-import numpy as np
-def Prim(n, weights):
-    # lowcost[j]的值为weights[j][closet[j]]
-    lowcost = np.array(weights[0])
-    # closest[j]是j在S中的邻接顶点
-    closest = np.zeros(n)
-    # 确定节点是否使用
-    s = np.zeros(n, bool)
-    # 从节点1开始求最小生成树
-    s[0] = True
-    # 求邻接节点，循环n-1次；
-    for i in range(1, n):
-        # 设置一个变量用来存放最小值；
-        minNumber = float('inf')
-        j = 1
-        # 找到当前节点到其他节点的权值最小的点；
-        for k in range(1, n):
-            if lowcost[k] < minNumber and not s[k] and lowcost[k] != 0:
-                minNumber = lowcost[k]
-                j = k
-        print(j + 1, end=" ")
-        print(int(closest[j] + 1), end=" ")
-        print(weights[j][int(closest[j])])
-        # 将j放入S集合中
-        s[j] = True
-        # 更新lowcost中其他节点到S中节点最短距离
-        for k in range(1, n):
-            if not s[k] and weights[j][k] != 0:
-                if weights[j][k] < lowcost[k] or lowcost[k] == 0:
-                    lowcost[k] = weights[j][k]
-                    closest[k] = j
+#Prim算法思想：
+#Prim:S、V为两个集合，S中初始为{1}，V中包含了所有的顶点，然后从V-S中选出和S中顶点距离最近的顶点j，并将j添加到S中。
+#设置两个数组closest和lowcost。
+#对于每个j属于V-S，closet[j]就是j在S中的邻接点，它于S中其他邻接点k相比较有v[j][closet[j]]<=v[j][k]，其中lowcost[j]的值就是v[j][closest]。
+#最后lowcost存储的就是相应的最小生成树的权值，而对于每个顶点，closest中可以找到最小生成树所对应的边。
 
-def main():
-    n = int(input())
-    weight = []
-    for i in range(n):
-        weight.append(list(map(int, input().rstrip().split())))
-    weights = np.array(weight).reshape(n, n)
-    Prim(n, weights)
+def cmp(key1, key2):
+    return (key1, key2) if key1 < key2 else (key2, key1)
+    
+def prim(graph, init_node):
+    visited = {init_node}
+    candidate = set(graph.keys())
+    candidate.remove(init_node)  #add all nodes into candidate set, except the start node
+    tree = []
+    while len(candidate) > 0:
+        edge_dict = dict()
+        for node in visited:  # find all visited nodes
+            for connected_node, weight in graph[node].items():  # find those were connected
+                if connected_node in candidate:
+                    edge_dict[cmp(connected_node, node)] = weight
+        edge, cost = sorted(edge_dict.items(), key=lambda kv: kv[1])[0]  # find the minimum cost edge
+        tree.append(edge)
+        visited.add(edge[0])  # cause you dont know which node will be put in the first place
+        visited.add(edge[1])
+        candidate.discard(edge[0]) # same reason. discard wont raise an exception.
+        candidate.discard(edge[1])
+    return tree
 
 if __name__ == '__main__':
-    main()
+    graph_dict = {
+        "A": {"B": 7, "D": 5},
+        "B": {"A": 7, "C": 8, "D": 9, "E": 5},
+        "C": {"B": 8, "E": 5},
+        "D": {"A": 5, "B": 9, "E": 15, "F": 6},
+        "E": {"B": 7, "C": 5, "D": 15, "F": 8, "G": 9},
+        "F": {"D": 6, "E": 8, "G": 11},
+        "G": {"E": 9, "F": 11}
+    }
+    path = prim(graph_dict, "D")
+    print(path)  # [('A', 'D'), ('D', 'F'), ('A', 'B'), ('B', 'E'), ('C', 'E'), ('E', 'G')]
