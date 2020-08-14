@@ -1,0 +1,244 @@
+from numpy import random as rd
+import copy  #引入copy模块
+import numpy as np
+import matplotlib.pyplot as plt
+import time
+
+np.set_printoptions(suppress=True, linewidth=1000) #设置输出样式
+ 
+def test_func(x1,x2,x3,x4,x5,x6,x7,x8,x9,x10):
+    # 目标函数
+    return x1**2+x2**2+x3**2+x4**2+x5**2+x6**2+x7**2+x8**2+x9**2+x10**2
+ 
+def GetTime(func_name):    #时间计算函数
+    def inner(*args, **kwargs):
+        start_time = time.time()
+        ret = func_name(*args, **kwargs)
+        end_time = time.time()
+        run_time = end_time - start_time
+        print("遗传算法迭代用时%f秒" % run_time)
+        return ret
+    return inner
+ 
+ 
+class GA(object): #定义遗传类
+ 
+    def __init__(self, pop_num, iter_time, cp, mp, coding_way, var_code_lenth, objective_function, **kwargs):
+        """
+        :param pop_num: 种群数量
+        :param iter_time: 迭代次数
+        :param cp: 交叉概率
+        :param mp: 变异概率
+        :param coding_way: 编码方式，传入"b"为二进制编码，传入"r"为实数编码
+        :param var_code_lenth: 每个决策变量的编码长度
+        :param objective_function: 传入自定义的计算目标函数值得函数对象, 函数对象在定义时需要设置决策变量为传入参数，
+                                    决策变量参数的传入顺序需与**kwargs决策变量一一对应， 例如def objective_func(x1, x2, x3),
+                                    在**kwargs传入时应该以x1=(x1_min, x1_max), x2=(x2_min, x2_max), x3=(x3_min, x3_max)的顺序传入
+                                    并且目标函数最终返回变量带入后求得的结果, 要求目标函数求最大值,一定要注意目标函在给定的定义域内不全小于等于0
+        :param kwargs: 传入方式为：决策变量1 = (决策变量1的最大值, 决策变量1的最小值), 决策变量2 = (决策变量2的最大值, 决策变量2的最小值), ...
+        """
+        self.pop_num = pop_num
+        self.iter_time = iter_time
+        self.cp = cp
+        self.mp = mp
+        self.coding_way = coding_way.lower()
+        self.var_code_lenth = var_code_lenth
+        self.obj_func = objective_function
+        self.kwargs = kwargs
+        # self.chrom_lenth为每条染色体（个体）编码长度
+        self.chrom_lenth = len(self.kwargs) * self.var_code_lenth
+        for min_, max_ in kwargs.values():
+            assert min_ < max_, "参数填写有误，最小值不能大于最大值"  #断言处理
+        # self.best_fitness_value用于存放每一代种群中最优的适应度，迭代结束后通过self.best_fitness_value[-1]取出最终的最优适应度值
+        # self.best_value用于存放每一代种群中最优适应度对应的个体解码值，也就是决策变量的值，迭代结束后通过self.best_value[-1]取出最优适应度对应的决策变量
+        self.best_fitness_value = []
+        self.best_value = []
+        try:
+            slices = tuple([slice(value_range[0], value_range[1], None) for value_range in self.kwargs.values()])
+            #使用元组方式将使用切片结束切得的目标函数值（自适应度）化为元组
+            var_values = np.mgrid[slices]   #二维数据
+            if np.all(objective_function(*var_values) <= 0):
+                exit("目标函数值域小于等于0，请将目标函数值域转换为大于等于0(对目标函数取负号，注意取负号后原目标求最大则转为了求最小，可以在采取取倒数转为求最大)")
+        except Exception as e:
+            pass
+ 
+    def code_(self):
+        # 编码方法
+        while True:
+            if self.coding_way == "b":  #二进制编码
+                self.chromsoms = rd.randint(0, 2, (self.pop_num, self.chrom_lenth))   
+                #前闭后开区间生成随机整数，size为pop.num行，chrom_length列
+            else:                       #实数编码
+                self.chromsoms =[((("%"+"."+str(self.var_code_lenth)+"f,") * len(self.kwargs)) % tuple(i)).strip(",").split(",")\
+                                 for i in rd.random((self.pop_num, len(self.kwargs)))]
+                                 #类似于实数匹配
+            self.decode_()       #解码
+            if not np.all(np.array(self.get_fitness_value()) <= 0):  #适应度（目标函数）小于0就跳过
+                break
+ 
+    def decode_(self):
+        # 解码
+        # self.values用于存放解码后的变量值
+        self.values = []
+        if self.coding_way == "b":  #二进制解码
+            for chrom in self.chromsoms:
+                # value用于每个个体解码后的变量值，解码规则：变量最小值 + （变量最大值 - 变量最小值）/ （2 ** 单个变量编码长度 - 1） * 变量实际编码转换为10进制的值
+                # len(value)应该与决策变量个数相同
+                value = []
+                for j in range(len(self.kwargs)):
+                    var_min, var_max = list(self.kwargs.values())[j]
+                    var_chrom = "".join([str(i) for i in chrom[j * self.var_code_lenth:(j + 1) * self.var_code_lenth]])
+                    var_bin_value = int(var_chrom, 2)
+                    bin_value = 2 ** self.var_code_lenth - 1
+                    var_value = var_min + var_bin_value * (var_max - var_min) / bin_value
+                    value.append(var_value)
+                self.values.append(value)
+        else:
+            for chrom in self.chromsoms:
+                value = []
+                for i in range(len(chrom)):
+                    var_min, var_max = list(self.kwargs.values())[i]
+                    value.append(var_min + float(chrom[i]) * (var_max - var_min))
+                self.values.append(value)
+ 
+    def get_fitness_value(self):
+        # 求适应度
+        # self.fit_values用于存放每个个体的适应度，即目标函数值
+        self.fit_values = []
+        for value in self.values:
+            if self.obj_func(*tuple(value)) < 0:  #适应度小于0
+                self.fit_values.append(0)
+            else:
+                self.fit_values.append(self.obj_func(*tuple(value)))
+        return self.fit_values
+ 
+    def copy_(self):
+        # 复制操作
+        best_chrom_index = self.fit_values.index(min(self.fit_values))  #当前最优解的索引
+        self.best_value.append(copy.deepcopy(self.values[best_chrom_index]))#最佳适应（最好目标函数）
+        self.best_fitness_value.append(self.fit_values[best_chrom_index]) #按图索骥找到最佳适应度
+        chromsoms = [copy.deepcopy(self.chromsoms[best_chrom_index])]
+        p = np.array(self.fit_values) / np.sum(self.fit_values)   #计算并排序适应度
+        p_cum = np.cumsum(p)  #累加适应度
+        for i in range(self.pop_num - 1):
+            rand_num = rd.random()
+            if rand_num < p_cum[0]:
+                chromsoms.append(copy.deepcopy(self.chromsoms[0]))
+                continue
+            for k in range(self.pop_num - 1):
+                if p_cum[k] <= rand_num < p_cum[k + 1]:
+                    chromsoms.append(copy.deepcopy(self.chromsoms[k + 1]))
+                    break
+        self.chromsoms = chromsoms
+ 
+    def crossover(self):
+    	#交叉操作
+        while True:
+            cros_index = []
+            for i in range(1, self.pop_num):
+                rand_num = rd.random()
+                if rand_num < self.cp:
+                    cros_index.append(i)
+            if cros_index and len(cros_index) % 2 == 0:
+                break
+        if self.coding_way == "b":
+            for i in range(0, len(cros_index), 2):
+                cros_point = rd.randint(1, self.chrom_lenth)
+                a = copy.deepcopy(self.chromsoms[cros_index[i]][cros_point:])
+                self.chromsoms[cros_index[i]][cros_point:] = copy.deepcopy(self.chromsoms[cros_index[i + 1]][cros_point:])
+                self.chromsoms[cros_index[i + 1]][cros_point:] = a
+        else:
+            for i in range(0, len(cros_index), 2):
+                cros_point = rd.randint(3, self.var_code_lenth + 2, len(self.kwargs))
+                for k in range(len(self.kwargs)):
+                    a = "".join(list(self.chromsoms[cros_index[i]][k])[cros_point[k]:])
+                    self.chromsoms[cros_index[i]][k] = self.chromsoms[cros_index[i]][k][:cros_point[k]] + self.chromsoms[cros_index[i + 1]][k][cros_point[k]:]
+                    self.chromsoms[cros_index[i + 1]][k] = self.chromsoms[cros_index[i + 1]][k][:cros_point[k]] + a
+ 
+    def mutate(self):
+    	#变异操作
+        self.decode_()
+        self.get_fitness_value()
+        best_chrom_index = self.fit_values.index(min(self.fit_values))
+        # 精英保留
+        chromsoms = [copy.deepcopy(self.chromsoms[best_chrom_index])]
+        # 排除精英，剩下的个体进行变异操作
+        self.chromsoms.pop(best_chrom_index)
+        while True:
+            mutate_point = []
+            for i in range(self.chrom_lenth * len(self.chromsoms)):
+                if rd.random() < self.mp:
+                    mutate_point.append(i)
+            if mutate_point:
+                break
+        if self.coding_way == "b":
+            for i in mutate_point:
+                mutate_index = i // self.chrom_lenth
+                mutate_point = i % self.chrom_lenth
+                if self.chromsoms[mutate_index][mutate_point] == 0:
+                    self.chromsoms[mutate_index][mutate_point] = 1
+                else:
+                    self.chromsoms[mutate_index][mutate_point] = 0
+        else:
+            for i in mutate_point:
+                mutate_index = i // self.chrom_lenth
+                mutate_point = i % self.chrom_lenth
+                mutate_var_index = mutate_point // self.var_code_lenth
+                mutate_var_point = mutate_point % self.var_code_lenth
+                a = copy.deepcopy(self.chromsoms[mutate_index])
+                while True:
+                    self.chromsoms[mutate_index][mutate_var_index] = self.chromsoms[mutate_index][mutate_var_index][:2 + mutate_var_point] + str(rd.randint(0, 10)) + self.chromsoms[mutate_index][mutate_var_index][mutate_var_point + 3:]
+                    if self.chromsoms[mutate_index] != a:
+                        break
+        chromsoms.extend(self.chromsoms)
+        self.chromsoms = chromsoms
+ 
+    @GetTime
+    def run(self):
+        """
+        如果目标函数极值求解没有约束条件，则可直接调用run来进行求解
+        否则需要自己调用code_, decode_, get_fitness_value, copy_,
+        crossover, mutate方法进行迭代
+        """
+        self.code_()
+        for i in range(self.iter_time):
+            if i == 0:
+                print("遗传算法开始迭代...")
+            if i % int(0.15 * self.iter_time) == 0:
+                print("遗传算法迭代第%d代" % i)
+            self.decode_()
+            self.get_fitness_value()
+            self.copy_()
+            self.crossover()
+            self.mutate()
+        print("最优适应度：", self.best_fitness_value[-1])
+        print("最优个体：", self.best_value[-1])
+        self.draw()
+        return self.best_fitness_value[-1], self.best_value[-1]
+ 
+    def draw(self):
+        fig = plt.figure()
+        ax = plt.subplot(1, 1, 1)
+        ax.plot(np.arange(1, self.iter_time + 1), self.best_fitness_value, color="r", label="fitness value")
+        ax.set_xlabel("generations")
+        ax.set_ylabel("fitness value")
+        if self.coding_way == "r":
+            ax.set_title("real number coding GA")
+        else:
+            ax.set_title("binary coding GA")
+        ax.legend()
+        plt.show()
+ 
+def main():
+    print("########二进制编码##############")
+    ga_b = GA(100, 300, 0.8, 0.1, "b", 10, test_func, x1=(-20, 20), x2=(-20, 20),x3=(-20, 20),\
+    	x4=(-20, 20), x5=(-20, 20),x6=(-20, 20),x7=(-20, 20), x8=(-20, 20),x9=(-20, 20),x10=(-20, 20))
+
+    ga_b.run()
+    #print("########实数编码################")
+    #ga_r = GA(50, 50, 0.75, 0.02, "r", 8, test_func, x1=(-20, 20), x2=(-20, 20),x3=(-20, 20),\
+    #	x4=(-20, 20), x5=(-20, 20),x6=(-20, 20),x7=(-20, 20), x8=(-20, 20),x9=(-20, 20),x10=(-20, 20))
+    #ga_r.run()
+ 
+if __name__ == "__main__":
+    main()
