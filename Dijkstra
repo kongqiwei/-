@@ -1,12 +1,8 @@
 
 # -*- coding: utf-8 -*-
-# @Time    : 2019/4/11
-# @Author  : Zhao huilin
-# @FileName: dijkstra.py
-# @Software: PyCharm
-# @Blog    ：https://me.csdn.net/nominior
+#该代码可以按给定的图改变图的结构就可以运用到任何普遍的图上实现该算法。
+
 import numpy as np
- 
 graph_chain = {
     'a': {'b': 7, 'c': 9, 'f': 14},
     'b': {'a': 7, 'c': 10, 'd': 15},
